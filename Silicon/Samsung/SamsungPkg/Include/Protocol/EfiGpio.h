@@ -27,9 +27,11 @@
 #define GPIO_DRV_FAST 0
 #define GPIO_DRV_SLOW 1
 
-// GPIO Directions
-#define GPIO_INPUT  0
-#define GPIO_OUTPUT 1
+// GPIO Directions & Alternate Functions
+#define GPIO_INPUT      0
+#define GPIO_OUTPUT     1
+#define GPIO_FUNCTION_2 2
+#define GPIO_FUNCTION_3 3
 
 //
 // Global GUID for the Exynos GPIO Protocol

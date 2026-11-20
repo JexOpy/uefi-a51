@@ -9,14 +9,17 @@
 #define LITTLE_WDT_RESET               (1U << 24)
 #define EXYNOS9610_EDPCSR_DUMP_EN      (1U << 0)
 
-#define UFS_SCLK                       166000000UL
+#define UFS_SCLK                       133250000UL
 #define CNT_VAL_1US_MASK               0x3FFU
 #define UFSHCI_VS_1US_TO_CNT_VAL       0x110CU
 #define UFSHCI_VS_UFSHCI_V2P1_CTRL     0x118CU
 #define IA_TICK_SEL                    (1U << 16)
 
-#define MUX_CLKCMU_UFS_EMBD_CON        0x13400160UL
-#define DIV_CLKCMU_UFS_EMBD_MUX        0x13401850UL
+/* Exynos 9610/9611 CMU_TOP (0x12100000) & CMU_FSYS (0x13400000) UFS_EMBD clocks:
+ * PLL_SHARED0_DIV4 (399.75 MHz) / 3 (DIVRATIO=2) = 133.25 MHz */
+#define MUX_CLKCMU_UFS_EMBD_CON        0x12101048UL
+#define DIV_CLKCMU_UFS_EMBD_MUX        0x12101850UL
+#define MUX_CLKCMU_UFS_EMBD_USER       0x13400160UL
 #define UFS_CLKCMU_TIMEOUT             100
 
 #define EXYNOS9610_UFS_BASE            0x13520000
@@ -34,7 +37,7 @@
 #define EXYNOS9610_GPG4_DAT            (EXYNOS9610_GPG4_BASE + 0x0004)
 
 #define EXYNOS9610_SYSREG_FSYS_BASE    0x13410000
-#define EXYNOS9610_SYSREG_IOCOHERENCY  (EXYNOS9610_SYSREG_FSYS_BASE + 0x700)
+#define EXYNOS9610_SYSREG_IOCOHERENCY  (EXYNOS9610_SYSREG_FSYS_BASE + 0x1010)
 
 STATIC EFI_EXYNOS_GPIO_PROTOCOL *mGpioProtocol;
 
@@ -53,11 +56,14 @@ VOID
 UfsSetUniProClk (struct UfsHost *Ufs)
 {
   int timeout = 0;
-  MmioWrite32(DIV_CLKCMU_UFS_EMBD_MUX, 3);
+  MmioWrite32(DIV_CLKCMU_UFS_EMBD_MUX, 2);
   do { timeout++; } while ((MmioRead32(DIV_CLKCMU_UFS_EMBD_MUX) & 0x10000) && timeout < UFS_CLKCMU_TIMEOUT);
   timeout = 0;
   MmioWrite32(MUX_CLKCMU_UFS_EMBD_CON, 1);
   do { timeout++; } while ((MmioRead32(MUX_CLKCMU_UFS_EMBD_CON) & 0x10000) && timeout < UFS_CLKCMU_TIMEOUT);
+  timeout = 0;
+  MmioWrite32(MUX_CLKCMU_UFS_EMBD_USER, MmioRead32(MUX_CLKCMU_UFS_EMBD_USER) | (1U << 4));
+  do { timeout++; } while ((MmioRead32(MUX_CLKCMU_UFS_EMBD_USER) & (1U << 7)) && timeout < UFS_CLKCMU_TIMEOUT);
   UfsVsSet1usToCnt (Ufs);
 }
 
@@ -88,38 +94,38 @@ UfsBoardInit (struct UfsHost *Ufs)
   Ufs->DevPwrShift = 0;
   Ufs->PhyIsoAddr = (VOID *)(UINTN)EXYNOS9610_PMU_UFS_PHY_CONTROL;
 
-  Ufs->MclkRate = 166 * 1000 * 1000;
+  Ufs->MclkRate = UFS_SCLK;
   Ufs->GearMode = 3;
 
   UfsSetUniProClk (Ufs);
 
-  /* GPIO: RST_N (GPF0-1) and REFCLK (GPF0-0), function 3 = UFS */
-  Status = mGpioProtocol->SetPull(GPIO_PULL_NONE, GPIO_BANK_ID_F, 0, GPIO_PULL_NONE);
+  /* GPIO: REFCLK (GPF0-0) and RST_N (GPF0-1), function 3 = UFS */
+  Status = mGpioProtocol->SetPull(0, GPIO_BANK_ID_F, 0, GPIO_PULL_NONE);
   if (EFI_ERROR (Status)) {
-    DEBUG ((EFI_D_ERROR, "Failed to set GPIO pull for RST_N! Status = %r\n", Status));
+    DEBUG ((EFI_D_ERROR, "Failed to set GPIO pull for REFCLK (GPF0-0)! Status = %r\n", Status));
     return Status;
   }
 
-  Status = mGpioProtocol->SetPull(GPIO_PULL_NONE, GPIO_BANK_ID_F, 1, GPIO_PULL_NONE);
+  Status = mGpioProtocol->SetPull(0, GPIO_BANK_ID_F, 1, GPIO_PULL_NONE);
   if (EFI_ERROR (Status)) {
-    DEBUG ((EFI_D_ERROR, "Failed to set GPIO pull for REFCLK! Status = %r\n", Status));
+    DEBUG ((EFI_D_ERROR, "Failed to set GPIO pull for RST_N (GPF0-1)! Status = %r\n", Status));
     return Status;
   }
 
-  Status = mGpioProtocol->ConfigurePin(GPIO_PULL_NONE, GPIO_BANK_ID_F, 0, GPIO_FUNCTION_3);
+  Status = mGpioProtocol->ConfigurePin(0, GPIO_BANK_ID_F, 0, GPIO_FUNCTION_3);
   if (EFI_ERROR (Status)) {
-    DEBUG ((EFI_D_ERROR, "Failed to configure GPIO pin for RST_N (GPF0-0)! Status = %r\n", Status));
+    DEBUG ((EFI_D_ERROR, "Failed to configure GPIO pin for REFCLK (GPF0-0)! Status = %r\n", Status));
     return Status;
   }
 
-  Status = mGpioProtocol->ConfigurePin(GPIO_PULL_NONE, GPIO_BANK_ID_F, 1, GPIO_FUNCTION_3);
+  Status = mGpioProtocol->ConfigurePin(0, GPIO_BANK_ID_F, 1, GPIO_FUNCTION_3);
   if (EFI_ERROR (Status)) {
-    DEBUG ((EFI_D_ERROR, "Failed to configure GPIO pin for REFCLK (GPF0-1)! Status = %r\n", Status));
+    DEBUG ((EFI_D_ERROR, "Failed to configure GPIO pin for RST_N (GPF0-1)! Status = %r\n", Status));
     return Status;
   }
 
   /* XBOOTLDO GPG4[0] — UFS VCC */
-  Status = mGpioProtocol->ConfigurePin(GPIO_PULL_NONE, GPIO_BANK_ID_G, 4, GPIO_OUTPUT);
+  Status = mGpioProtocol->ConfigurePin(4, GPIO_BANK_ID_G, 0, GPIO_OUTPUT);
   if (EFI_ERROR (Status)) {
     DEBUG ((EFI_D_ERROR, "Failed to configure GPG4-0! Status = %r\n", Status));
     return Status;
