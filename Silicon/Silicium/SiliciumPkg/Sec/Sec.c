@@ -18,6 +18,13 @@
 
 #include "Sec.h"
 
+//
+// Entry argument HOB consumed by UniXNURamDiskDxe to locate /chosen/linux,initrd-*.
+//
+STATIC CONST EFI_GUID mEntryArgHobGuid = {
+  0xDAEE82E6, 0x8090, 0x4E72, { 0xBF, 0xB9, 0x78, 0xC1, 0x3C, 0xD4, 0xE3, 0x59 }
+};
+
 STATIC EFI_MEMORY_REGION_DESCRIPTOR UefiFdRegion;
 
 #ifndef MDEPKG_NDEBUG
@@ -158,8 +165,9 @@ DecompressFvs ()
 STATIC
 VOID
 SecMain (
-  IN UINTN StackBase,
-  IN UINTN StackSize)
+  IN UINTN  StackBase,
+  IN UINTN  StackSize,
+  IN UINT64 EntryArg)
 {
   EFI_STATUS Status;
 
@@ -184,6 +192,9 @@ SecMain (
 
   // Build CPU HOB
   BuildCpuHob (ArmGetPhysicalAddressBits (), PcdGet8 (PcdPrePiCpuIoSize));
+
+  // Publish bootloader entry argument (FDT pointer) for DXE drivers
+  BuildGuidDataHob ((EFI_GUID *)&mEntryArgHobGuid, &EntryArg, sizeof (EntryArg));
 
   // Initialize PPI
   if (ArmIsMpCore ()) {
@@ -220,8 +231,9 @@ SecMain (
 
 VOID
 CEntryPoint (
-  IN UINTN StackBase,
-  IN UINTN StackSize)
+  IN UINTN  StackBase,
+  IN UINTN  StackSize,
+  IN UINT64 EntryArg)
 {
     EFI_STATUS Status;
   // Verify Exception Vector Table
@@ -248,7 +260,7 @@ CEntryPoint (
   InvalidateDataCacheRange ((VOID *)StackBase, StackSize);
 
   // Enter SEC Main Function
-  SecMain (StackBase, StackSize);
+  SecMain (StackBase, StackSize, EntryArg);
 
   // Something went Wrong
   CpuDeadLoop ();

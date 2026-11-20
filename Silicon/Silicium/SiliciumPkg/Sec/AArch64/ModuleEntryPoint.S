@@ -13,6 +13,9 @@
 .set CTRL_SPAN_BIT, (1 << 23)
 
 ASM_FUNC (_ModuleEntryPoint)
+  // Preserve bootloader FDT pointer (x0) in callee-saved x19 for UniXNURamDiskDxe.
+  mov   x19, x0
+
   // Do Platform Specific Initialization
   bl    ASM_PFX (PlatformAssemblyInitialize)
 
@@ -57,24 +60,26 @@ ASM_PFX (MainEntryPoint):
   mov   sp, x7
 
   // Clear Stack
+  mov   x10, x8
   mov   x6, xzr
-0:stp   x6, x6, [x8], #16
-  cmp   x8, x7
+0:stp   x6, x6, [x10], #16
+  cmp   x10, x7
   b.lt  0b
 
   // Re-Enable CPU Caches
   bl    ASM_PFX (ArmEnableInstructionCache)
   bl    ASM_PFX (ArmEnableDataCache)
 
-  // Pass Parameters
-  mov   x0, x8
-  mov   x1, x9
+  // Pass Parameters: x0 = StackBase, x1 = StackSize, x2 = EntryArg (FDT pointer)
+  MOV64 (x0, FixedPcdGet64 (PcdCPUCoresStackBase))
+  MOV32 (x1, FixedPcdGet32 (PcdCPUCorePrimaryStackSize))
+  mov   x2, x19
 
   // Set Jump Location
-  ldr   x2, =ASM_PFX (CEntryPoint)
+  ldr   x3, =ASM_PFX (CEntryPoint)
 
   // Clear Frame pointer
   mov   x29, xzr
 
   // Jump to C Code
-  blr   x2
+  blr   x3

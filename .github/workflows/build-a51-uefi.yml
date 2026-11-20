@@ -1,0 +1,59 @@
+name: Build Galaxy A51 (SM-A515F) Stage-1 UEFI
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Build target (DEBUG draws UEFI logs directly onto the 1080x2400 screen)"
+        type: choice
+        options: ["DEBUG", "RELEASE"]
+        default: "DEBUG"
+      partition:
+        description: "Odin .tar partition member (recovery keeps Android boot intact)"
+        type: choice
+        options: ["recovery", "boot"]
+        default: "recovery"
+
+permissions:
+  contents: read
+
+jobs:
+  build-uefi:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install toolchain and EDK2 dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential uuid-dev iasl git nasm python3-venv python3-pip \
+            clang lld llvm gcc-aarch64-linux-gnu device-tree-compiler mono-devel
+
+      - name: Build a51Pkg UEFI (SILICIUM_UEFI.fd + Mu-a51-0.img)
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r pip-requirements.txt
+          export CLANG_BIN=/usr/bin/
+          python3 build_uefi.py -d a51 -r "${{ inputs.target }}"
+
+      - name: Pack Odin tar
+        run: |
+          cp Mu-a51-0.img "${{ inputs.partition }}.img"
+          tar -H ustar -cf "a51-uefi-${{ inputs.target }}-${{ inputs.partition }}.tar" "${{ inputs.partition }}.img"
+          ls -lh Build/a51Pkg/*/FV/SILICIUM_UEFI.fd Mu-a51-0.img "a51-uefi-${{ inputs.target }}-${{ inputs.partition }}.tar"
+
+      - name: Upload UEFI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: uefi-a51-${{ inputs.target }}
+          retention-days: 14
+          path: |
+            Build/a51Pkg/*/FV/SILICIUM_UEFI.fd
+            Mu-a51-0.img
+            a51-uefi-*.tar
