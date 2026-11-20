@@ -28,6 +28,9 @@
 
 !include S5E9610Pkg/S5E9610Pkg.dsc.inc
 
+[BuildOptions]
+  *_CLANGPDB_*_CC_FLAGS = -Wno-unused-but-set-variable -Wno-unused-but-set-global
+
 [PcdsFixedAtBuild]
   #
   # DDR Memory
